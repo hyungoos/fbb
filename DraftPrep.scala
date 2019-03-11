@@ -1,16 +1,16 @@
 import java.io.FileWriter
 import java.net.URLEncoder
 
-import com.merlin.common.AsciiFolder
-
 import scala.io.Source
+
+import com.merlin.common.AsciiFolder
 
 object Fantasy {
   val ParenthesisRE = "\\(.*\\)".r
 
   val words = """([a-zA-Z]+)""".r
 
-  val pathPrefix = "/Users/hkang/Dropbox/fantasy/2018/"
+  val pathPrefix = "/Users/hkang/Dropbox/fantasy/2019/"
 
   implicit class StringPimps(val s: String) extends AnyVal {
     def doubleString(default: Double = 0): String = {
@@ -120,6 +120,27 @@ object Fantasy {
         println("FAILED yahooValue")
         None
     }
+  }.toSet.toSeq
+
+  def parseYahooLast(file: String): Data = {
+    val path = pathPrefix + file
+    Source.fromFile(path).getLines.filter { line =>
+      line.contains(" - ")
+    }.toSeq.flatMap { line =>
+      line.split("\\s+") match {
+        case arr if arr.size >= 4 =>
+          val value = arr.last.trim.stripPrefix("$")
+          val player = arr.drop(1).dropRight(1).mkString(" ")
+          val name = ParenthesisRE.replaceFirstIn(player, "").name
+          val data = Seq(
+            "v_last"   -> value.trim.intString(11)
+          )
+          Some(name -> data)
+        case arr =>
+          println("FAILED: " + arr.mkString("[", ", ", "]").toString)
+          None
+      }
+    }
   }.toSeq
 
   def parsePianoValue(file: String): Data = {
@@ -144,11 +165,10 @@ object Fantasy {
     // Rank,Tier,Player,$,Target Round,AVG,Diff,NFBC,Y!,RTS
     Source.fromFile(path).getLines.toSeq.flatMap { line =>
       line.split(',').toList match {
-        case r :: _ :: name :: value :: _ :: adp :: _ :: _ :: _ :: _ =>
+        case r :: _ :: name :: _ :: value :: _ =>
           val data = Seq(
             "r_rb" -> r.trim.intString(400),
-            "v_rb" -> value.trim.intString(0),
-            "r_adp_rb"  -> adp.trim.doubleString(400)
+            "v_rb" -> value.trim.intString(0)
           )
           Some(name.name -> data)
         case arr =>
@@ -264,32 +284,40 @@ object Fantasy {
     val dataList = List(
       parseYahooRank("yahoo_rank.txt"),
       parseYahooValue("yahoo_value.txt"),
+      parseYahooLast("yahoo_last.txt"),
       parsePianoValue("piano_value.txt"),
-//      parseRotoBaller("rotoballer.csv"),
+      parseRotoBaller("rotoballer.csv"),
 //      parseEspn("espn_cockcroft.txt"),
-      parseKarabell("espn_karabell.txt"),
+//      parseKarabell("espn_karabell.txt"),
       parseFProRank("fpro_rank.csv"),
       parseFProValue("fpro_value.txt"),
       parseFanProj("steamer_batters.csv",  "v_steamer"),
-      parseFanProj("steamer_pitchers.csv", "v_steamer"),
+      parseFanProj("steamer_pitchers.csv", "v_steamer")
 //      parseFanProj("fans_batters.csv",  "v_fans"),
 //      parseFanProj("fans_pitchers.csv", "v_fans"),
 //      parseFanProj("depth_batters.csv",  "v_depth"),
 //      parseFanProj("depth_pitchers.csv", "v_depth")
-      parseFansPos("fans_1b.tsv", "1B"),
-      parseFansPos("fans_2b.tsv", "2B"),
-      parseFansPos("fans_of.tsv", "OF"),
-      parseFansPos("fans_3b.tsv", "3B"),
-      parseFansPos("fans_ss.tsv", "SS"),
-      parseFansPos("fans_c.tsv",  "C "),
-      parseFansPos("fans_rp.tsv", "RP"),
-      parseFansPos("fans_sp.tsv", "SP")
+//      parseFansPos("fans_1b.tsv", "1B"),
+//      parseFansPos("fans_2b.tsv", "2B"),
+//      parseFansPos("fans_of.tsv", "OF"),
+//      parseFansPos("fans_3b.tsv", "3B"),
+//      parseFansPos("fans_ss.tsv", "SS"),
+//      parseFansPos("fans_c.tsv",  "C "),
+//      parseFansPos("fans_rp.tsv", "RP"),
+//      parseFansPos("fans_sp.tsv", "SP")
     )
 
+/*
     val Fields = Seq(
       "pos", "pos_r_fans", "pos_r_paul", "pos_r_jeff",  "r_karabell", "r_y_all", "r_y_piano", "r_fpro_avg", "r_fpro_rank", "avg_r",
       "gang9_v", "avg_v", "v_y_proj", "v_y_avg", "v_fpro", "v_piano", "v_steamer"
     )
+*/
+    val Fields = Seq(
+      "pos", "r_y_all", "r_y_piano", "r_rb", "r_fpro_avg", "r_fpro_rank", "avg_r",
+      "gang9_v", "avg_v", "v_y_proj", "v_y_avg", "v_fpro", "v_piano", "v_rb", "v_steamer", "v_last"
+    )
+
     val writer = new FileWriter(path, false)
     writer.write((Seq("name") ++ Fields).mkString("\t") + "\n")
     dataList.flatten.groupBy(_._1).toSeq.sortBy(_._1).foreach { case (name, values) =>
@@ -308,6 +336,8 @@ object Fantasy {
               "400"
             } else if (f == "v_steamer" || f == "v_fans" || f == "v_depth") {
               "-5"
+            } else if (f == "v_last") {
+              "11"
             } else if (f.startsWith("v_")) {
               "0"
             } else {
